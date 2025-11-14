@@ -24,7 +24,7 @@ def _prepare_clip_for_vertical(clip):
     # Resize so height matches
     clip = clip.fx(vfx.resize, height=OUTPUT_HEIGHT)
 
-    # If width is still smaller than 1080, scale width
+    # If width is smaller than 1080, scale width
     if clip.w < OUTPUT_WIDTH:
         clip = clip.fx(vfx.resize, width=OUTPUT_WIDTH)
 
@@ -42,20 +42,19 @@ def _prepare_clip_for_vertical(clip):
 
 def _cv2_blur(image, blur_strength=35):
     """
-    Gaussian blur via OpenCV (this ALWAYS works).
+    Gaussian blur via OpenCV (ALWAYS works on macOS).
     """
     return cv2.GaussianBlur(image, (blur_strength, blur_strength), 0)
 
 
 def _stylize_background(clip):
     """
-    Universal blur + dim layer. MoviePy blur fails on macOS,
-    so we use cv2 for reliable mobile-friendly blur.
+    Soft blur + dim background for crisp Ananya-style subtitles.
     """
-    # Apply cv2 blur to every frame
+    # Apply soft blur
     clip = clip.fl_image(lambda frame: _cv2_blur(frame, 35))
 
-    # Dim the clip slightly for subtitle readability
+    # Dim slightly for readability
     clip = clip.fx(vfx.colorx, 0.85)
 
     return clip
@@ -81,7 +80,7 @@ def run(script_text, voice_path, clip_paths, title_text):
     if not processed:
         raise RuntimeError("No valid video clips loaded.")
 
-    # Merge all background clips
+    # Merge clips
     base = concatenate_videoclips(processed, method="compose")
     base = base.set_fps(OUTPUT_FPS).resize((OUTPUT_WIDTH, OUTPUT_HEIGHT))
 
@@ -89,7 +88,7 @@ def run(script_text, voice_path, clip_paths, title_text):
     audio = AudioFileClip(voice_path)
     base = base.set_audio(audio).set_duration(audio.duration)
 
-    # Add subtitles
+    # Subtitles
     try:
         subtitled = generate_subtitles(voice_path, base)
     except Exception as e:
@@ -108,7 +107,7 @@ def run(script_text, voice_path, clip_paths, title_text):
         )
         subtitled = CompositeVideoClip([base, fallback])
 
-    # Minimal watermark
+    # Watermark (fully visible, right-aligned)
     watermark = (
         TextClip(
             "@ArthAurJeevan",
@@ -118,7 +117,8 @@ def run(script_text, voice_path, clip_paths, title_text):
             stroke_width=1,
         )
         .set_duration(audio.duration)
-        .set_position((OUTPUT_WIDTH - 230, OUTPUT_HEIGHT - 80))
+        .set_position(("right", "bottom"))   # right aligned
+        .margin(right=40, bottom=60, opacity=0)   # SAFE margins
         .fadein(0.5)
     )
 
