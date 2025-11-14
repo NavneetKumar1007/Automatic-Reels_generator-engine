@@ -1,0 +1,24 @@
+# Python virtual environment
+venv/
+
+# Bytecode + cache
+__pycache__/
+*.pyc
+
+# Output videos + audio
+data/output/
+data/background_videos/
+*.mp4
+*.mp3
+*.wav
+
+# Config (we will create a safe template separately)
+config/config.yaml
+
+# Whisper download cache
+~/.cache/whisper/
+
+# Mac OS junk
+.DS_Store
+
+
