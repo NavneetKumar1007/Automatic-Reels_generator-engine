@@ -1,66 +1,84 @@
+# generate_script.py — Viral-Optimized Reel Script Generator
+
 from openai import OpenAI
 import yaml
 import random
 import os
 
-def run(language="hindi", category="life_lessons"):
-    print("🧠 Generating script using AI...")
 
-    # Load OpenAI key from config
+def run(language="hindi", category="life_lessons"):
+    print("🧠 Generating viral-optimized script...")
+
+    # Load API Key
     with open("config/config.yaml", "r") as f:
         config = yaml.safe_load(f)
-    openai_key = config.get("openai_api_key")
-    client = OpenAI(api_key=openai_key)
 
-    # Define category-based prompt style
-    # Define category-based prompt style
+    client = OpenAI(api_key=config.get("openai_api_key"))
+
+    # ======================================================
+    # VIRAL REEL FORMAT (core secret sauce)
+    # ======================================================
+    viral_format = """
+Write a short, viral-style reel script in EXACTLY 5 lines.
+
+The script MUST follow this structure:
+
+Line 1 → Strong hook (shock/emotion/curiosity)
+Line 2 → Relatable truth (viewer feels 'this is me')
+Line 3 → Insight / Turning point
+Line 4 → Deep punchline / wisdom
+Line 5 → Final powerful end punch (stronger than Line 1)
+
+Rules:
+- Pure Hindi (Devanagari)
+- Each line under 8–10 words
+- No long sentences
+- No paragraphs
+- No stories
+- Each line on a new line
+- Must sound cinematic & emotional
+- Designed for subtitles (punchy rhythm)
+"""
+
+    # ======================================================
+    # CATEGORY THEMES
+    # ======================================================
     if category == "life_lessons":
-    	topics = [
-        	"Write a short Hindi reel script (4–6 lines). Each line must be short, punchy and under 10 words. No long paragraphs. Tone: motivational & cinematic.",
-        	"Write a crisp Hindi motivational reel script about struggle and success. Max 5 lines. Each line separate for subtitles.",
-        	"Write a short Hindi life lesson for reels. 4–5 lines. No story, only punchy lines.",
-    	]
+        topic = "Theme: struggle, discipline, success, self-growth."
     elif category == "finance":
-    	topics = [
-        	"Write a short Hindi finance reel script (max 4–6 lines). Each line 1 sentence, under 10–12 words. Keep it practical and motivational.",
-        	"Write a powerful Hindi reel about Indian finance or money habits. Max 5 lines. No paragraphs.",
-        	"Write a punchy Hindi reel script about wealth building. 4–6 short lines.",
-   	 ]
+        topic = "Theme: wealth building, money habits, savings, investment."
     elif category == "spiritual":
-    	topics = [
-        	"Write a short spiritual Hindi reel script. Max 4–6 lines. Each line short & devotional.",
-        	"Write a crisp Hindi spiritual message inspired by Bhagavad Gita. 4–5 lines only.",
-        	"Write a short Hindi reel about inner peace and faith. Max 6 lines.",
-    	]
+        topic = "Theme: karma, peace, Bhagavad Gita, faith, inner strength."
     else:
-    	topics = [
-        	"Write a short and powerful Hindi motivational reel (max 5 lines). No stories.",
-        	"Write a punchy Hindi reel script about never giving up. Each line short.",
-    	]
+        topic = "Theme: general motivation and personal transformation."
 
-    prompt = random.choice(topics)
+    full_prompt = viral_format + "\n\n" + topic
 
-    # Build full instruction
-    if language.lower() == "hindi":
-        prompt = f"Write in pure Hindi (Devanagari script). {prompt}"
-    else:
-        prompt = f"Write in English. {prompt}"
-
-    # Generate script using OpenAI
+    # ======================================================
+    # CALL OPENAI
+    # ======================================================
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "You are a creative Hindi motivational script writer."},
-            {"role": "user", "content": prompt}
-        ],
+            {
+                "role": "system",
+                "content": "You write viral Hindi motivational scripts like a top 1M-subscriber reel creator."
+            },
+            {
+                "role": "user",
+                "content": full_prompt
+            }
+        ]
     )
 
     script_text = response.choices[0].message.content.strip()
 
-    # Save the script text for record
+    # Save for debugging
     os.makedirs("data/output", exist_ok=True)
     with open("data/output/latest_script.txt", "w") as f:
         f.write(script_text)
 
-    return script_text
+    print("\n✨ Viral Script Generated:\n")
+    print(script_text, "\n")
 
+    return script_text
