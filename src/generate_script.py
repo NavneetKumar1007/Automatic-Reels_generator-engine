@@ -13,30 +13,30 @@ def run(language="hindi", category="life_lessons"):
     client = OpenAI(api_key=openai_key)
 
     # Define category-based prompt style
+    # Define category-based prompt style
     if category == "life_lessons":
-        topics = [
-            "Write a short and emotional Hindi speech (under 200 words) about patience, struggle, and success. Make it sound inspiring and natural.",
-            "Write a 30-40 second Hindi motivational message about hard work and dreams. Keep tone natural like a storyteller.",
-            "Write a short Hindi inspirational paragraph about how failure is part of success.",
-            "Write a short Hindi life lesson quote with emotional impact and practical advice."
-        ]
+    	topics = [
+        	"Write a short Hindi reel script (4–6 lines). Each line must be short, punchy and under 10 words. No long paragraphs. Tone: motivational & cinematic.",
+        	"Write a crisp Hindi motivational reel script about struggle and success. Max 5 lines. Each line separate for subtitles.",
+        	"Write a short Hindi life lesson for reels. 4–5 lines. No story, only punchy lines.",
+    	]
     elif category == "finance":
-        topics = [
-            "Write a short Hindi explanation about personal finance, investing, or saving habits in a motivational tone.",
-            "Explain one powerful finance fact related to India in Hindi under 4 lines.",
-            "Write a short motivational Hindi script about growing wealth slowly with consistency."
-        ]
+    	topics = [
+        	"Write a short Hindi finance reel script (max 4–6 lines). Each line 1 sentence, under 10–12 words. Keep it practical and motivational.",
+        	"Write a powerful Hindi reel about Indian finance or money habits. Max 5 lines. No paragraphs.",
+        	"Write a punchy Hindi reel script about wealth building. 4–6 short lines.",
+   	 ]
     elif category == "spiritual":
-        topics = [
-            "Write a peaceful, spiritual Hindi script about life, karma, and inner peace.",
-            "Write a 30-second Hindi reflection on Lord Krishna’s teachings.",
-            "Write an inspirational Hindi script based on Bhagavad Gita concepts of action and patience."
-        ]
+    	topics = [
+        	"Write a short spiritual Hindi reel script. Max 4–6 lines. Each line short & devotional.",
+        	"Write a crisp Hindi spiritual message inspired by Bhagavad Gita. 4–5 lines only.",
+        	"Write a short Hindi reel about inner peace and faith. Max 6 lines.",
+    	]
     else:
-        topics = [
-            "Write a short motivational Hindi script about never giving up in life.",
-            "Write a 30-second Hindi quote about courage and success."
-        ]
+    	topics = [
+        	"Write a short and powerful Hindi motivational reel (max 5 lines). No stories.",
+        	"Write a punchy Hindi reel script about never giving up. Each line short.",
+    	]
 
     prompt = random.choice(topics)
 

@@ -1,3 +1,4 @@
+# main.py (optional replacement)
 import random
 import os
 import yaml
@@ -10,7 +11,7 @@ def main():
     print("\n🎬 Starting AI Reels Generator...")
 
     # Load config
-    with open("config/config.yaml", "r") as f:
+    with open("config/config.template.yaml", "r") as f:
         config = yaml.safe_load(f)
     openai_key = config.get("openai_api_key")
 
@@ -92,7 +93,7 @@ def main():
     # 🎥 Download matching clips from Pexels (based on category)
     clip_paths = download_video.run(script_text, clip_count, selected_category)
 
-    # 🎬 Compose final cinematic reel
+    # 🎬 Compose final cinematic reel (Ananya-style)
     final_output = compose_video.run(script_text, voice_path, clip_paths, title_text)
 
     print(f"\n✅ Final cinematic reel created: {final_output}")

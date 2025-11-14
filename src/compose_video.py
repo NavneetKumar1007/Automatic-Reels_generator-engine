@@ -1,3 +1,5 @@
+import cv2
+import numpy as np
 from moviepy.editor import (
     VideoFileClip,
     concatenate_videoclips,
@@ -5,85 +7,134 @@ from moviepy.editor import (
     TextClip,
     CompositeVideoClip,
 )
+from moviepy.video.fx import all as vfx
 import os
 from datetime import datetime
-from src.subtitles import generate_subtitles  # AI-synced subtitles
+from src.subtitles import generate_subtitles
+
+OUTPUT_WIDTH = 1080
+OUTPUT_HEIGHT = 1920
+OUTPUT_FPS = 30
+
+
+def _prepare_clip_for_vertical(clip):
+    """
+    Convert any clip (landscape/portrait/mixed) to perfect 1080x1920.
+    """
+    # Resize so height matches
+    clip = clip.fx(vfx.resize, height=OUTPUT_HEIGHT)
+
+    # If width is still smaller than 1080, scale width
+    if clip.w < OUTPUT_WIDTH:
+        clip = clip.fx(vfx.resize, width=OUTPUT_WIDTH)
+
+    # Center-crop exact 1080x1920
+    clip = clip.fx(
+        vfx.crop,
+        width=OUTPUT_WIDTH,
+        height=OUTPUT_HEIGHT,
+        x_center=clip.w / 2,
+        y_center=clip.h / 2,
+    )
+
+    return clip.set_fps(OUTPUT_FPS)
+
+
+def _cv2_blur(image, blur_strength=35):
+    """
+    Gaussian blur via OpenCV (this ALWAYS works).
+    """
+    return cv2.GaussianBlur(image, (blur_strength, blur_strength), 0)
+
+
+def _stylize_background(clip):
+    """
+    Universal blur + dim layer. MoviePy blur fails on macOS,
+    so we use cv2 for reliable mobile-friendly blur.
+    """
+    # Apply cv2 blur to every frame
+    clip = clip.fl_image(lambda frame: _cv2_blur(frame, 35))
+
+    # Dim the clip slightly for subtitle readability
+    clip = clip.fx(vfx.colorx, 0.85)
+
+    return clip
 
 
 def run(script_text, voice_path, clip_paths, title_text):
     if not clip_paths:
-        raise RuntimeError("No video clips available to compose the final reel.")
+        raise RuntimeError("No video clips available.")
 
-    os.makedirs("data/output", exist_ok=True)
+    print("🎬 Creating cinematic vertical reel (Ananya-style)...")
 
-    print("🎬 Creating cinematic reel with CENTER subtitles + golden signature watermark...")
+    processed = []
 
-    # 🧩 Merge all clips
-    video_clips = []
     for path in clip_paths:
         try:
-            clip = VideoFileClip(path).resize(height=1080).set_fps(24)
-            video_clips.append(clip)
+            raw = VideoFileClip(path)
+            v1 = _prepare_clip_for_vertical(raw)
+            v2 = _stylize_background(v1)
+            processed.append(v2)
         except Exception as e:
-            print(f"⚠️ Skipping clip {path} due to: {e}")
+            print(f"⚠ Skipping {path}: {e}")
 
-    if not video_clips:
-        raise RuntimeError("No valid video clips were loaded successfully.")
+    if not processed:
+        raise RuntimeError("No valid video clips loaded.")
 
-    final_clip = concatenate_videoclips(video_clips, method="compose")
+    # Merge all background clips
+    base = concatenate_videoclips(processed, method="compose")
+    base = base.set_fps(OUTPUT_FPS).resize((OUTPUT_WIDTH, OUTPUT_HEIGHT))
 
-    # 🎵 Add voice
+    # Add audio
     audio = AudioFileClip(voice_path)
-    final_clip = final_clip.set_audio(audio).set_duration(audio.duration)
+    base = base.set_audio(audio).set_duration(audio.duration)
 
-    # 💬 Generate Whisper subtitles
-    print("💬 Generating AI-synced subtitles...")
+    # Add subtitles
     try:
-        subtitled_video = generate_subtitles(voice_path, final_clip)
+        subtitled = generate_subtitles(voice_path, base)
     except Exception as e:
-        print(f"⚠️ Subtitle generation failed ({e}), using fallback center subtitles.")
-        subtitle = (
-            TextClip(
-                txt=script_text,
-                fontsize=84,  # bigger font
-                font="Devanagari-Sangam-MN",
-                color="white",
-                stroke_color="black",
-                stroke_width=6,
-                method="caption",
-                size=(1000, None),
-                align="center",
-            )
-            .set_position(("center", "center"))  # 🎯 Center of reel
-            .set_duration(audio.duration)
-        )
-        subtitled_video = CompositeVideoClip([final_clip, subtitle])
-
-    # 🌟 Golden @ArthaurJeevan watermark (bottom-right)
-    watermark = (
-        TextClip(
-            "@ArthaurJeevan",
-            fontsize=56,
-            font="Lobster-Regular",  # classic artistic brush font
-            color="#FFD700",  # gold
+        print("⚠ Subtitle generation failed:", e)
+        fallback = TextClip(
+            txt=script_text,
+            fontsize=70,
+            color="white",
             stroke_color="black",
             stroke_width=3,
+            method="caption",
+            align="center",
+            size=(int(OUTPUT_WIDTH * 0.8), None),
+        ).set_position(("center", int(OUTPUT_HEIGHT * 0.76))).set_duration(
+            audio.duration
         )
-        .set_position(("right", "bottom"))
+        subtitled = CompositeVideoClip([base, fallback])
+
+    # Minimal watermark
+    watermark = (
+        TextClip(
+            "@ArthAurJeevan",
+            fontsize=36,
+            color="white",
+            stroke_color="black",
+            stroke_width=1,
+        )
         .set_duration(audio.duration)
-        .fadein(1)
-        .fadeout(1)
+        .set_position((OUTPUT_WIDTH - 230, OUTPUT_HEIGHT - 80))
+        .fadein(0.5)
     )
 
-    # 🧡 Combine everything (video + subtitles + watermark)
-    final = CompositeVideoClip([subtitled_video, watermark])
+    final = CompositeVideoClip([subtitled, watermark]).set_duration(audio.duration)
 
-    # 🎞️ Save with timestamp name
-    filename = f"data/output/final_reel_ArthaurJeevan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
-    print(f"📽️ Rendering final reel → {filename}")
+    # Filename
+    filename = f"data/output/final_reel_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+    print("➡ Saving:", filename)
 
-    final.write_videofile(filename, fps=24, audio_codec="aac", threads=4, preset="medium")
+    final.write_videofile(
+        filename,
+        fps=OUTPUT_FPS,
+        audio_codec="aac",
+        threads=4,
+        preset="medium",
+    )
 
-    print(f"✅ Final cinematic reel saved: {filename}")
     return filename
 

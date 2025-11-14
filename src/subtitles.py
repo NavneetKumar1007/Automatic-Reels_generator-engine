@@ -1,70 +1,80 @@
+# src/subtitles.py
 import whisper
-from moviepy.editor import TextClip, CompositeVideoClip, ColorClip
+from moviepy.editor import TextClip, CompositeVideoClip
+from moviepy.video.fx import all as vfx_all
 from tqdm import tqdm
+import os
+
+# try to use a local fonts/ directory first, fallback to system font name
+FONT_CANDIDATES = [
+    "fonts/Mukta-Bold.ttf",    # recommended: place Mukta-Bold.ttf in project/fonts/
+    "Mukta-Bold",              # system-installed font name
+    "NotoSansDevanagari-Bold", # alternate
+    "Devanagari-Sangam-MN"     # fallback (mac default)
+]
+
+
+def pick_font():
+    for f in FONT_CANDIDATES:
+        if os.path.exists(f):
+            return f
+    # if none exist as file, return first candidate as a font name (MoviePy will attempt to resolve)
+    return FONT_CANDIDATES[1]
+
+
+def _clip_safe_position(video_w, video_h, y_ratio=0.76):
+    """
+    Return x,y suitable for lower-third placement while staying above UI
+    """
+    return ("center", int(video_h * y_ratio))
+
 
 def generate_subtitles(audio_path, video_clip):
-    print("💬 Generating cinematic Hindi subtitles (AI synced)...")
-
-    # Load Whisper model (tiny/small recommended for speed)
+    """
+    Generate whisper transcription, build TextClip subtitles optimized for 1080x1920 mobile reels.
+    - Single line whenever possible, wraps to 2 lines automatically.
+    - Lower-third placement at ~76% height.
+    - White text with thick black stroke for maximum legibility.
+    """
+    print("💬 Generating perfect Hindi subtitles (Ananya-style)...")
     model = whisper.load_model("small")
     result = model.transcribe(audio_path, language="hi")
 
     subtitle_clips = []
     video_w, video_h = video_clip.size
+    font = pick_font()
+    max_width = int(video_w * 0.8)  # 80% width as Ananya style
 
-    # Merge small pauses and smooth transitions
-    merged_segments = []
-    for segment in result["segments"]:
-        text = segment["text"].strip()
-        start = max(segment["start"] - 0.2, 0)
-        end = segment["end"] + 0.5
+    segments = result.get("segments", [])
 
-        # Merge with previous if short gap
-        if merged_segments and start - merged_segments[-1]["end"] < 0.8:
-            merged_segments[-1]["text"] += " " + text
-            merged_segments[-1]["end"] = end
-        else:
-            merged_segments.append({"text": text, "start": start, "end": end})
+    for seg in tqdm(segments, desc="🎞 Rendering subtitles"):
+        text = seg["text"].strip()
+        if not text:
+            continue
 
-    for segment in tqdm(merged_segments, desc="🎞️ Rendering cinematic subtitles"):
-        text = segment["text"].strip()
-        start = segment["start"]
-        end = segment["end"]
+        start = max(seg.get("start", 0) - 0.05, 0)
+        end = seg.get("end", start + 2)
 
-        # Background semi-transparent bar for readability
-        bg_bar = (
-            ColorClip(size=(video_w, 200), color=(0, 0, 0))
-            .set_opacity(0.4)
-            .set_start(start)
-            .set_end(end)
-            .set_position(("center", video_h - 250))
-        )
+        # Primary TextClip settings (big, bold, readable)
+        sub = TextClip(
+            txt=text,
+            fontsize=88,                       # tuned for 1080x1920
+            font=font,
+            color="white",
+            stroke_color="black",
+            stroke_width=6,                    # bold stroke for phones
+            method="caption",                  # automatic wrapping
+            align="center",
+            size=(max_width, None),            # force wrapping at 80% width
+        ).set_start(start).set_end(end)
 
-        # Text styling with glow and fade
-        txt_clip = (
-            TextClip(
-                txt=text,
-                fontsize=72,
-                font="Devanagari-Sangam-MN",  # macOS Hindi font
-                color="white",
-                stroke_color="black",
-                stroke_width=3,
-                method="caption",
-                size=(video_w - 200, None),
-                align="center",
-            )
-            .set_position(("center", video_h - 300))
-            .set_start(start)
-            .set_end(end)
-            .fadein(0.3)
-            .fadeout(0.3)
-            .margin(bottom=30, opacity=0)
-            .set_position(lambda t: ("center", video_h - 310 + (t % 0.5)))  # gentle float
-        )
+        # position lower-third with gentle fade
+        x_pos, y_pos = _clip_safe_position(video_w, video_h, y_ratio=0.76)
+        sub = sub.set_position((x_pos, y_pos)).crossfadein(0.12).crossfadeout(0.12)
 
-        subtitle_clips.extend([bg_bar, txt_clip])
+        subtitle_clips.append(sub)
 
-    print(f"✅ {len(merged_segments)} subtitle segments styled and synced.")
-    final_video = CompositeVideoClip([video_clip, *subtitle_clips])
-    return final_video
+    print(f"✅ Added {len(subtitle_clips)} subtitle segments.")
+    # Compose with original video_clip (subtitles over video)
+    return CompositeVideoClip([video_clip, *subtitle_clips]).set_duration(video_clip.duration)
 
