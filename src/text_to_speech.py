@@ -18,10 +18,11 @@ def run(script_text):
     print("🎤 Generating AI voice from final script...")
 
     # Convert script_text directly to TTS
+    script_for_voice = script_text.replace("\n", "\n\n")
     response = client.audio.speech.create(
         model="gpt-4o-mini-tts",
         voice="alloy",
-        input=script_text
+        input=script_for_voice
     )
 
     with open(file_name, "wb") as f:

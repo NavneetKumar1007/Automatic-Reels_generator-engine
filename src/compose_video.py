@@ -1,140 +1,162 @@
-import cv2
-import numpy as np
+# compose_video.py
+# Cinematic reel generator using AI images + motion + LOGO watermark
+
 from moviepy.editor import (
-    VideoFileClip,
-    concatenate_videoclips,
+    ImageClip,
     AudioFileClip,
-    TextClip,
+    concatenate_videoclips,
     CompositeVideoClip,
 )
 from moviepy.video.fx import all as vfx
 import os
 from datetime import datetime
-from src.subtitles import generate_subtitles
 
+# Output settings
 OUTPUT_WIDTH = 1080
 OUTPUT_HEIGHT = 1920
 OUTPUT_FPS = 30
 
+END_PADDING = 0.5  # seconds (soft ending)
 
-def _prepare_clip_for_vertical(clip):
+
+# -------------------------
+# Image → Motion
+# -------------------------
+def image_to_motion_clip(
+    image_path,
+    duration,
+    zoom_factor=1.08,
+):
     """
-    Convert any clip (landscape/portrait/mixed) to perfect 1080x1920.
+    Convert static image into cinematic slow-zoom clip.
     """
-    # Resize so height matches
-    clip = clip.fx(vfx.resize, height=OUTPUT_HEIGHT)
 
-    # If width is smaller than 1080, scale width
-    if clip.w < OUTPUT_WIDTH:
-        clip = clip.fx(vfx.resize, width=OUTPUT_WIDTH)
-
-    # Center-crop exact 1080x1920
-    clip = clip.fx(
-        vfx.crop,
-        width=OUTPUT_WIDTH,
-        height=OUTPUT_HEIGHT,
-        x_center=clip.w / 2,
-        y_center=clip.h / 2,
+    clip = (
+        ImageClip(image_path)
+        .set_duration(duration)
+        .resize(height=OUTPUT_HEIGHT)
+        .fx(
+            vfx.resize,
+            lambda t: 1 + (zoom_factor - 1) * (t / duration)
+        )
+        .set_position("center")
+        .set_fps(OUTPUT_FPS)
     )
-
-    return clip.set_fps(OUTPUT_FPS)
-
-
-def _cv2_blur(image, blur_strength=35):
-    """
-    Gaussian blur via OpenCV (ALWAYS works on macOS).
-    """
-    return cv2.GaussianBlur(image, (blur_strength, blur_strength), 0)
-
-
-def _stylize_background(clip):
-    """
-    Soft blur + dim background for crisp Ananya-style subtitles.
-    """
-    # Apply soft blur
-    clip = clip.fl_image(lambda frame: _cv2_blur(frame, 35))
-
-    # Dim slightly for readability
-    clip = clip.fx(vfx.colorx, 0.85)
 
     return clip
 
 
-def run(script_text, voice_path, clip_paths, title_text):
-    if not clip_paths:
-        raise RuntimeError("No video clips available.")
+# -------------------------
+# Main Composer
+# -------------------------
+def run(
+    voice_path,
+    image_paths,
+    background_music_path=None,
+    logo_path="assets/logo/logo.png",
+):
+    """
+    image_paths: ordered images
+    voice_path: TTS audio
+    background_music_path: optional
+    logo_path: brand watermark
+    """
 
-    print("🎬 Creating cinematic vertical reel (Ananya-style)...")
+    if not image_paths:
+        raise RuntimeError("No images provided for video composition.")
 
-    processed = []
+    print("🎬 Creating cinematic reel from images...")
 
-    for path in clip_paths:
-        try:
-            raw = VideoFileClip(path)
-            v1 = _prepare_clip_for_vertical(raw)
-            v2 = _stylize_background(v1)
-            processed.append(v2)
-        except Exception as e:
-            print(f"⚠ Skipping {path}: {e}")
+    # -------------------------
+    # Voice
+    # -------------------------
+    voice = AudioFileClip(voice_path)
+    voice_duration = voice.duration
 
-    if not processed:
-        raise RuntimeError("No valid video clips loaded.")
+    per_scene_duration = voice_duration / len(image_paths)
 
-    # Merge clips
-    base = concatenate_videoclips(processed, method="compose")
-    base = base.set_fps(OUTPUT_FPS).resize((OUTPUT_WIDTH, OUTPUT_HEIGHT))
+    # -------------------------
+    # Image motion clips
+    # -------------------------
+    clips = [
+        image_to_motion_clip(img, per_scene_duration)
+        for img in image_paths
+    ]
 
-    # Add audio
-    audio = AudioFileClip(voice_path)
-    base = base.set_audio(audio).set_duration(audio.duration)
+    base_video = concatenate_videoclips(clips, method="compose")
+    base_video = base_video.set_duration(voice_duration)
 
-    # Subtitles
-    try:
-        subtitled = generate_subtitles(voice_path, base)
-    except Exception as e:
-        print("⚠ Subtitle generation failed:", e)
-        fallback = TextClip(
-            txt=script_text,
-            fontsize=70,
-            color="white",
-            stroke_color="black",
-            stroke_width=3,
-            method="caption",
-            align="center",
-            size=(int(OUTPUT_WIDTH * 0.8), None),
-        ).set_position(("center", int(OUTPUT_HEIGHT * 0.76))).set_duration(
-            audio.duration
-        )
-        subtitled = CompositeVideoClip([base, fallback])
-
-    # Watermark (fully visible, right-aligned)
-    watermark = (
-        TextClip(
-            "@ArthAurJeevan",
-            fontsize=36,
-            color="white",
-            stroke_color="black",
-            stroke_width=1,
-        )
-        .set_duration(audio.duration)
-        .set_position(("right", "bottom"))   # right aligned
-        .margin(right=40, bottom=60, opacity=0)   # SAFE margins
-        .fadein(0.5)
+    # -------------------------
+    # Clean voice audio
+    # -------------------------
+    voice_clean = (
+        voice
+        .audio_fadein(0.15)
+        .audio_fadeout(0.15)
     )
 
-    final = CompositeVideoClip([subtitled, watermark]).set_duration(audio.duration)
+    final_audio = voice_clean
 
-    # Filename
+    # -------------------------
+    # Optional background music
+    # -------------------------
+    if background_music_path and os.path.exists(background_music_path):
+        music = (
+            AudioFileClip(background_music_path)
+            .volumex(0.12)
+            .set_duration(voice_duration + END_PADDING)
+            .audio_fadein(1.0)
+            .audio_fadeout(1.0)
+        )
+
+        final_audio = CompositeVideoClip([base_video]).audio.fx(
+            vfx.audio_mix, music
+        )
+
+    base_video = base_video.set_audio(final_audio)
+
+    # -------------------------
+    # LOGO WATERMARK
+    # -------------------------
+    overlays = [base_video]
+
+    if logo_path and os.path.exists(logo_path):
+        logo = (
+            ImageClip(logo_path)
+            .set_duration(voice_duration + END_PADDING)
+            .resize(width=int(OUTPUT_WIDTH * 0.18))  # SAME size
+            .set_opacity(1.0)  # full clarity
+            .set_position(("right", "bottom"))
+            .margin(
+                right=40,
+                bottom=60,
+                left=18,
+                top=12,
+                opacity=0.30,  # subtle backing
+                color=(0, 0, 0)
+            )
+        )
+
+        overlays.append(logo)
+
+    final = CompositeVideoClip(overlays)
+    final = final.set_duration(voice_duration + END_PADDING)
+
+    # -------------------------
+    # Output
+    # -------------------------
+    os.makedirs("data/output", exist_ok=True)
     filename = f"data/output/final_reel_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+
     print("➡ Saving:", filename)
 
     final.write_videofile(
         filename,
         fps=OUTPUT_FPS,
+        codec="libx264",
         audio_codec="aac",
         threads=4,
         preset="medium",
     )
 
     return filename
-

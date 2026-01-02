@@ -1,16 +1,20 @@
-# main.py — Reel Generator + Dynamic Hook + Viral Caption + Facebook Upload
+# main.py
+# AI Reel Generator – Image Motion Pipeline (OPTION 1)
 
-import random
 import os
+import random
 import yaml
-from datetime import datetime
-from openai import OpenAI
-from src import text_to_speech, download_video, compose_video
+
+from src.generate_script import run as generate_script
+from src.split_script_into_scenes import split_into_scenes
+from src.generate_images import generate_images
+from src.text_to_speech import run as generate_voice
+from src.compose_video import run as compose_video
 from src.upload_to_facebook import upload_reel_to_facebook
 
 
 def main():
-    print("\n🎬 Starting AI Reels Generator...\n")
+    print("\n🎬 Starting AI Reel Generator (Image + Motion Mode)...\n")
 
     # =========================
     # LOAD CONFIG
@@ -18,183 +22,83 @@ def main():
     with open("config/config.yaml", "r") as f:
         config = yaml.safe_load(f)
 
-    openai_key = config.get("openai_api_key")
     fb_page_id = config["facebook"]["page_id"]
     fb_page_token = config["facebook"]["page_access_token"]
-
-    client = OpenAI(api_key=openai_key)
 
     # =========================
     # SELECT CATEGORY
     # =========================
     categories = ["life_lessons", "finance", "spiritual"]
-    selected_category = random.choice(categories)
-    print(f"🧠 Selected Category: {selected_category.replace('_', ' ').title()}\n")
+    category = random.choice(categories)
 
-    PROMPTS = {
-        "life_lessons": [
-            "Write a 30-second Hindi motivational message about hard work, struggle, and dreams. Make it sound powerful.",
-            "Write a short Hindi script about patience, effort, and success in life.",
-            "Write a Hindi motivational quote with an example of a famous person.",
-        ],
-        "finance": [
-            "Write a short Hindi script explaining the power of saving and investing in India.",
-            "Explain a surprising fact about India's economy or stock market in Hindi.",
-            "Write a motivational Hindi script about growing wealth slowly and wisely.",
-        ],
-        "spiritual": [
-            "Write a short Hindi reflection on peace, karma, and Bhagavad Gita lessons.",
-            "Write a calming Hindi message about life, destiny, and God.",
-            "Write a Hindi script about how spirituality brings inner strength.",
-        ]
-    }
+    print(f"🧠 Category: {category.replace('_', ' ').title()}")
 
     # =========================
-    # GENERATE MAIN SCRIPT
+    # ENSURE DATA DIRS
     # =========================
-    prompt = random.choice(PROMPTS[selected_category])
-    prompt = f"Write in pure Hindi (Devanagari script). {prompt}"
-
-    print("🧠 Generating Hindi script...\n")
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are a creative Hindi motivational storyteller."},
-            {"role": "user", "content": prompt}
-        ],
-    )
-
-    script_text = response.choices[0].message.content.strip()
-    print("📜 Script:\n", script_text, "\n")
-
-    # Save script
     os.makedirs("data/output", exist_ok=True)
-    with open("data/output/latest_script.txt", "w") as f:
+    os.makedirs("data/images", exist_ok=True)
+    os.makedirs("data/metadata", exist_ok=True)
+
+    # =========================
+    # GENERATE SCRIPT
+    # =========================
+    content = generate_script(category=category)
+    script_text = content["script_text"]
+    caption = content["caption"]
+
+    with open("data/output/latest_script.txt", "w", encoding="utf-8") as f:
         f.write(script_text)
 
     # =========================
-    # GENERATE TITLE (short)
+    # SPLIT SCRIPT INTO SCENES
     # =========================
-    print("🧠 Generating title...\n")
-    title_prompt = f"Suggest a short, powerful Hindi video title (under 8 words) for this script: {script_text}"
+    scenes = split_into_scenes(script_text, max_scenes=5)
+    scene_texts = [s["visual_hint"] for s in scenes]
 
-    title_response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You write viral Hindi reel titles."},
-            {"role": "user", "content": title_prompt}
-        ],
+    print(f"🧩 Script split into {len(scene_texts)} scenes")
+
+    # =========================
+    # GENERATE / REUSE IMAGES
+    # =========================
+    image_paths = generate_images(
+        scenes=scene_texts,
+        category=category
     )
 
-    title_text = title_response.choices[0].message.content.strip().replace('"', '')
-    print(f"🎬 Title: {title_text}\n")
-
-    # =========================
-    # GENERATE VIRAL HOOK
-    # =========================
-    print("🧠 Generating hook...\n")
-
-    hook_prompt = f"""
-Write a powerful 1-line hook in pure Hindi (Devanagari) to instantly grab attention for this script:
-
-{script_text}
-
-Rules:
-- Under 10 words
-- Emotional or curiosity-building
-- Spoken directly to the viewer (आप / तुम)
-- Must hook within 2 seconds
-"""
-
-    hook_response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You write viral short-form hooks."},
-            {"role": "user", "content": hook_prompt}
-        ],
-    )
-
-    intro_line = hook_response.choices[0].message.content.strip()
-    print("🎤 Hook:", intro_line, "\n")
-
-    # Merge hook + script for TTS
-    final_voice_script = f"{intro_line}\n{script_text}"
-
-    # =========================
-    # GENERATE VIRAL CAPTION
-    # =========================
-    print("🧠 Generating viral caption...\n")
-
-    caption_prompt = f"""
-Write a viral-style reel caption in pure Hindi (Devanagari)
-for this script:
-
-{script_text}
-
-The caption must:
-- Be 2–3 short lines
-- Emotional + curiosity-building
-- Encourage people to watch till the end
-- Feel personal and deep
-- Add 4–6 powerful hashtags
-- Add brand tag: @ArthAurJeevan
-"""
-
-    caption_response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You write viral Instagram/Facebook captions."},
-            {"role": "user", "content": caption_prompt}
-        ],
-    )
-
-    final_caption = caption_response.choices[0].message.content.strip()
-    print("📝 Caption:\n", final_caption, "\n")
+    if not image_paths:
+        raise RuntimeError("❌ No images available for video composition.")
 
     # =========================
     # GENERATE VOICEOVER
     # =========================
-    voice_path = text_to_speech.run(final_voice_script)
+    voice_path = generate_voice(script_text)
 
     # =========================
-    # CLIP COUNT FROM AUDIO LENGTH
+    # COMPOSE FINAL VIDEO
     # =========================
-    try:
-        from mutagen.mp3 import MP3
-        audio = MP3(voice_path)
-        voice_duration = audio.info.length
-        clip_count = max(3, int(voice_duration / 6))
-        print(f"🎧 Duration: {voice_duration:.1f}s → {clip_count} clips\n")
-    except:
-        clip_count = 6
-        print("⚠️ Duration fail → using 6 clips\n")
+    final_video = compose_video(
+        voice_path=voice_path,
+        image_paths=image_paths,
+        background_music_path="assets/music/soft_motivation.mp3"
+    )
 
-    # =========================
-    # FETCH VIDEO CLIPS
-    # =========================
-    clip_paths = download_video.run(script_text, clip_count, selected_category)
-
-    # =========================
-    # CREATE FINAL REEL
-    # =========================
-    final_output = compose_video.run(final_voice_script, voice_path, clip_paths, title_text)
-
-    print(f"🎉 Final reel created: {final_output}\n")
-
-    print("📘 Ready Caption:\n", final_caption, "\n")
+    print(f"🎉 Reel created successfully: {final_video}")
 
     # =========================
     # AUTO UPLOAD TO FACEBOOK
     # =========================
-    print("🚀 Uploading to Facebook Page...\n")
+
+    print("🚀 Uploading reel to Facebook...\n")
+
     upload_reel_to_facebook(
         page_id=fb_page_id,
         page_access_token=fb_page_token,
-        video_path=final_output,
-        caption=final_caption
+        video_path=final_video,
+        caption=caption
     )
+    print("\n✅ Pipeline completed successfully.\n")
 
 
 if __name__ == "__main__":
     main()
-
