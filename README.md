@@ -1,4 +1,4 @@
-ArthAurJeevan – Automated AI Reel Generator
+🎬 ArthAurJeevan – Automated AI Reel Generator
 
 An end-to-end automated pipeline that generates, animates, brands, and uploads cinematic motivational reels using AI — fully hands-free.
 
@@ -78,9 +78,7 @@ Create this file (DO NOT COMMIT IT):
 
 config/config.yaml
 
-
-Example:
-
+Example
 openai_api_key: "YOUR_OPENAI_API_KEY"
 
 facebook:
@@ -104,7 +102,7 @@ Prevents duplicate uploads
 
 Runs on next wake if Mac was off
 
-Logs every run
+Logs every execution
 
 Deletes local video only after successful upload
 
@@ -126,9 +124,9 @@ Scripts & captions → very low
 
 Voice generation → low
 
-Images → main cost (cached intelligently)
+Image generation → main cost (cached intelligently)
 
-Typical cost per reel depends on image count.
+Typical cost per reel depends on the number of images generated.
 
 🧹 What is intentionally NOT included
 
