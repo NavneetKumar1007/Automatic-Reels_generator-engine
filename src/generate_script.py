@@ -22,58 +22,68 @@ def run(language="hindi", category="life_lessons"):
     # CATEGORY THEMES
     # =========================
     if category == "life_lessons":
-        topic = "struggle, discipline, consistency, self-growth"
+        topic = "जीवन, अनुशासन, धैर्य, आत्मविकास"
     elif category == "finance":
-        topic = "money mindset, savings, investment, financial discipline"
+        topic = "धन, निवेश, बचत, आर्थिक अनुशासन"
     elif category == "spiritual":
-        topic = "karma, peace, faith, inner strength"
+        topic = "कर्म, शांति, विश्वास, आत्मबल"
     else:
-        topic = "motivation and personal transformation"
+        topic = "प्रेरणा और आत्मपरिवर्तन"
 
     # =========================
-    # SINGLE PROMPT (SCRIPT + CAPTION)
+    # SINGLE PROMPT
     # =========================
     prompt = f"""
-You are a top 1M-subscriber Hindi motivational reel creator.
+You are a 1M+ follower Hindi reel creator for Indian audience.
 
 Create content in PURE Hindi (Devanagari).
-Return ONLY valid JSON. No explanations.
+Tone: calm, confident, informative, motivational.
+Audience: Indian retail investors (beginner to intermediate).
 
-JSON format (strict):
+Return ONLY valid JSON. No markdown. No explanations.
+
+IMPORTANT COMPLIANCE:
+- This is NOT investment advice.
+- Give HIGH-LEVEL public information only.
+- Mention reputed institutions where relevant.
+- Avoid buy/sell words.
+
+JSON FORMAT (STRICT):
 {{
   "script": [
-    "Line 1 – strong emotional hook",
-    "Line 2 – relatable truth",
-    "Line 3 – insight or turning point",
-    "Line 4 – deep wisdom punch",
-    "Line 5 – final powerful ending"
+    "Line 1 – strong hook",
+    "Line 2 – reality check",
+    "Line 3 – financial insight",
+    "Line 4 – long-term thinking",
+    "Line 5 – calm motivational close"
   ],
-  "caption": "2–3 short emotional lines that encourage reflection or sharing",
+  "financial_snapshot": {{
+    "gold": "भारत में सोने की वर्तमान स्थिति और अगले 1 वर्ष का उच्च-स्तरीय दृष्टिकोण (JPMorgan / World Gold Council जैसे स्रोतों के अनुसार)",
+    "silver": "चांदी की वर्तमान स्थिति और अगले 1 वर्ष का उच्च-स्तरीय दृष्टिकोण",
+    "real_estate": "भारत में औसत रियल एस्टेट मूल्य और अगले 1 वर्ष का दृष्टिकोण",
+    "nifty_50": "निफ्टी 50 का वर्तमान स्तर और अगले 1 वर्ष का उच्च-स्तरीय दृष्टिकोण"
+  }},
+  "caption": "2–3 शांत और सोचने पर मजबूर करने वाली पंक्तियाँ",
   "hashtags": [
-    "#अनुशासन",
-    "#सपने",
-    "#संघर्ष",
-    "#जीवन",
+    "#धन",
+    "#निवेश",
+    "#आर्थिकसमझ",
+    "#भारत",
     "#ArthAurJeevan"
   ]
 }}
 
-Rules for SCRIPT:
+RULES FOR SCRIPT:
 - EXACTLY 5 lines
-- Each line under 8–10 words
-- No paragraphs
-- No stories
-- Cinematic & emotional
-
-Rules for CAPTION:
-- 2–3 short lines
-- Must emotionally match the script
+- Each line max 8–10 words
 - No emojis
-- Encourage save/share
+- No stories
+- Reel duration friendly (10–15 sec)
 
-Rules for HASHTAGS:
-- 4–6 hashtags
-- Must match category: {category}
+RULES FOR CAPTION:
+- Plain text only
+- No '\\n' literals
+- Informational, not advisory
 
 Theme focus:
 {topic}
@@ -87,7 +97,7 @@ Theme focus:
         messages=[
             {
                 "role": "system",
-                "content": "You generate high-retention Hindi reel content."
+                "content": "You generate compliant, high-retention Hindi financial reels."
             },
             {
                 "role": "user",
@@ -99,25 +109,31 @@ Theme focus:
     raw_output = response.choices[0].message.content.strip()
 
     # =========================
-    # PARSE JSON SAFELY
+    # PARSE JSON
     # =========================
     try:
         content = json.loads(raw_output)
     except json.JSONDecodeError:
-        raise RuntimeError("❌ Model did not return valid JSON.\n\n" + raw_output)
+        raise RuntimeError("❌ Invalid JSON from model:\n\n" + raw_output)
 
-    script_lines = content["script"]
-    caption_text = content["caption"]
+    script_text = "\n".join(content["script"])
+    financial_block = (
+        f"सोना: {content['financial_snapshot']['gold']}\n"
+        f"चांदी: {content['financial_snapshot']['silver']}\n"
+        f"रियल एस्टेट: {content['financial_snapshot']['real_estate']}\n"
+        f"निफ्टी 50: {content['financial_snapshot']['nifty_50']}"
+    )
+
+    caption = content["caption"].strip()
     hashtags = " ".join(content["hashtags"])
 
-    # Final outputs
-    script_text = "\n".join(script_lines)
-    final_caption = caption_text + "\n\n" + hashtags
+    final_caption = f"{caption}\n\n{financial_block}\n\n{hashtags}"
 
     # =========================
-    # SAVE FOR DEBUGGING
+    # SAVE OUTPUTS
     # =========================
     os.makedirs("data/output", exist_ok=True)
+
     with open("data/output/latest_script.txt", "w", encoding="utf-8") as f:
         f.write(script_text)
 
@@ -125,18 +141,11 @@ Theme focus:
         f.write(final_caption)
 
     # =========================
-    # LOG OUTPUT
+    # LOG
     # =========================
-    print("\n✨ Script:\n")
-    print(script_text)
+    print("\n✨ Script:\n", script_text)
+    print("\n📝 Caption:\n", final_caption)
 
-    print("\n📝 Caption:\n")
-    print(final_caption)
-    print()
-
-    # =========================
-    # RETURN VALUES
-    # =========================
     return {
         "script_text": script_text,
         "caption": final_caption
